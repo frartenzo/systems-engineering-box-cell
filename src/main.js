@@ -5,7 +5,7 @@ import { buildHall, buildBelts, buildBins, bins, labels, HUB } from './plant.js'
 import { buildTable, table, stationOf } from './table.js';
 import { buildLane, buildBoxLine, HEAD_X, lane, BOX_Z, LANE_Z } from './line.js';
 import { R } from './table.js';
-import { P, S, deltas, initSim, presettle, frame, addOrder, countsFromLayout, setDeltas, injectError, emptyBin, requestAgv, agvStatus, updateBinGlow } from './sim.js';
+import { P, S, deltas, initSim, presettle, frame, addOrder, countsFromLayout, setDeltas, injectError, emptyBin, requestAgv, agvStatus, agvOf, updateBinGlow } from './sim.js';
 import { initBuilder, openBuilder, closeBuilder, builderOpen, hideTip } from './builder.js';
 
 const NORENDER = new URLSearchParams(location.search).has('norender');
@@ -77,7 +77,7 @@ function toast(msg, warn = false) {
 }
 
 // ---------------------------------------------------------------- UI
-let selBin = null;
+let selBin = null, followBin = null;
 function selectBin(b) {
   if (selBin) { selBin.setSelected(false); updateBinGlow(selBin); }
   selBin = b;
@@ -128,7 +128,11 @@ function buildUI() {
   });
 
   // scheda cassone + chiamata AGV
-  $('bcAgv').onclick = () => { if (selBin) { requestAgv(selBin); renderBinCard(); } };
+  $('bcAgv').onclick = () => {
+    if (!selBin) return;
+    requestAgv(selBin); followBin = selBin; renderBinCard();
+    if (P.paused) toast('AGV chiamato, ma l\'impianto è fermo: premi ▶ Avvia', true);
+  };
   $('bcCam').onclick = () => { if (selBin) { const [p, t] = binView(selBin); goTo(p, t); } };
 
   // selezione e tooltip dei cassoni
@@ -142,7 +146,7 @@ function buildUI() {
   };
   let down = null, hoverT = 0;
   const cv = renderer.domElement;
-  cv.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+  cv.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; followBin = null; });
   cv.addEventListener('pointerup', (e) => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
     selectBin(pick(e));
@@ -177,7 +181,8 @@ function renderBinCard() {
   $('bcBar').style.background = frac > 0.35 ? 'var(--ok)' : frac > 0.15 ? 'var(--acc)' : 'var(--err)';
   $('bcL1').innerHTML = `Scorta: <b style="color:var(--fg)">${b.stock}</b>/${S.stockInit} · fisiche ${b.caps.size} · in coda ${b.queued}`;
   const st = agvStatus(b);
-  $('bcL2').textContent = `Inclinazione ${(b.tilt * 180 / Math.PI).toFixed(0)}° · ${b.swapping ? (agvTxt[st] || 'AGV in corso') : b.agvRequested ? 'AGV chiamato: in attesa che il corridoio sia libero' : 'online'}`;
+  const busyTxt = P.paused ? 'AGV chiamato: impianto fermo, premi ▶ Avvia' : 'AGV chiamato: in attesa che il corridoio sia libero';
+  $('bcL2').textContent = `Inclinazione ${(b.tilt * 180 / Math.PI).toFixed(0)}° · ${b.swapping ? (agvTxt[st] || 'AGV in corso') : b.agvRequested ? busyTxt : 'online'}`;
   const busy = b.swapping || b.agvRequested;
   $('bcAgv').disabled = busy;
   $('bcAgv').textContent = busy ? '🚚 AGV in corso…' : '🚚 Chiama AGV · cassone nuovo';
@@ -197,10 +202,10 @@ function renderHUD() {
   $('slots').innerHTML = table.slots.map((s) => {
     const st = stationOf(s.id);
     const cls = s.rstate === 'discharging' ? 'discharging' : s.rstate === 'full' ? 'ready' : s.state === 'scramble' ? 'scramble' : '';
-    const p = s.state === 'scramble' ? s.timer / P.scrambleTime : s.rstate === 'loading' ? s.xfer : s.rstate === 'empty' && s.state === 'empty' ? 0 : 1;
+    const p = s.state === 'scramble' ? s.timer / P.scrambleTime : s.rstate === 'loading' ? s.ritems.length / Math.max(1, s.total) : s.rstate === 'empty' && s.state === 'empty' ? 0 : 1;
     return `<div class="slot ${cls}"><b>S${s.id + 1}</b> · ${stName[st]}<br>${tubTxt[s.state]}<small>buffer: ${ringTxt[s.rstate]}</small><i><u style="width:${p * 100}%"></u></i></div>`;
   }).join('');
-  $('idx').innerHTML = S.idxWait ? `Tavola: <span class="${S.idxWait.startsWith('attesa scrambler') ? 'warn' : ''}">${S.idxWait}</span>` : 'Tavola: in movimento / ciclo regolare';
+  $('idx').innerHTML = (S.idxWait ? `Tavola: <span class="${S.idxWait.startsWith('attesa scrambler') ? 'warn' : ''}">${S.idxWait}</span>` : 'Tavola: in movimento / ciclo regolare') + ` · cancelletti nastri: <b style="color:${S.gatesOpen ? 'var(--ok)' : 'var(--err)'}">${S.gatesOpen ? 'aperti' : 'chiusi'}</b>`;
   const queued = S.orders.filter((o) => o.status === 'queued').length;
   $('qInfo').textContent = queued ? `${queued} ordini in coda` : '';
   $('orders').innerHTML = S.orders.slice(-6).map((o) => {
@@ -216,7 +221,9 @@ function renderHUD() {
 const fmtT = (t) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
 
 // ---------------------------------------------------------------- loop
-let last = performance.now(), hudT = 0;
+// Carico GPU/CPU contenuto: render a 30 fps (?fps=60 per fluido), ombre ricalcolate ogni 8 frame disegnati
+const FPS = +(new URLSearchParams(location.search).get('fps') || 30);
+let last = performance.now(), hudT = 0, lastDraw = 0, drawN = 0;
 const fwd = new THREE.Vector3(), rgt = new THREE.Vector3();
 function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -235,8 +242,17 @@ function loop(now) {
     if (keys.has('e')) mv.y += sp; if (keys.has('q')) mv.y -= sp;
     camera.position.add(mv); controls.target.add(mv); tween = null;
   }
+  if (followBin) {   // la camera segue l'AGV chiamato finché non lo scambio finisce o si tocca la vista
+    const a = agvOf(followBin);
+    if (!a || !a.group.visible) { if (!followBin.swapping && !followBin.agvRequested) followBin = null; }
+    else { const d = a.group.position.clone().sub(controls.target).multiplyScalar(Math.min(1, dt * 3)); controls.target.add(d); camera.position.add(d); tween = null; }
+  }
   controls.update();
-  if (!NORENDER) renderer.render(scene, camera);
+  if (!NORENDER && now - lastDraw >= 1000 / FPS - 2) {
+    lastDraw = now;
+    renderer.shadowMap.needsUpdate = drawN++ % 8 === 0;
+    renderer.render(scene, camera);
+  }
   hudT += dt; if (hudT > 0.25) { hudT = 0; renderHUD(); }
   requestAnimationFrame(loop);
 }
@@ -244,4 +260,4 @@ function loop(now) {
 boot().catch((e) => { console.error(e); const l = $('loading'); if (l) l.textContent = 'Errore: ' + e.message; });
 import { world } from './core.js';
 import * as SIM from './sim.js';
-window.__sim = { get world() { return world; }, allCaps, S, P, bins, table, deltas, lane, SIM, setRunning };
+window.__sim = { get world() { return world; }, allCaps, S, P, bins, table, deltas, lane, SIM, setRunning, get cam() { return { camera, controls }; } };

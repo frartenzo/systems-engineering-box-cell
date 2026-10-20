@@ -24,10 +24,11 @@ export async function initPhysics() {
 }
 
 // ---------------------------------------------------------------- scena
-export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'default' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = false;   // ricalcolate a mano (vedi main.js): le ombre cambiano poco
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -58,7 +59,7 @@ export function initScene(container) {
   const sun = new THREE.DirectionalLight(0xfff4e6, 2.1);
   sun.position.set(50, 90, 40);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
   sc.left = -85; sc.right = 85; sc.top = 95; sc.bottom = -75; sc.near = 20; sc.far = 260;
   sun.shadow.bias = -0.0004;

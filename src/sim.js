@@ -1,14 +1,14 @@
 import { THREE, RAPIER, world, V3, yawQ, rand, clamp, smooth, spawnCap, killCap, dropBody, makeBody, syncCaps, writeMatrix, touchInstances, allCaps, physCaps, capMesh, flavorColors } from './core.js';
 import * as C from './config.js';
 import { FLAVORS, CAP, NF, BOX_SIZE } from './config.js';
-import { belts, bins, beltT, beltLat, beltPt, HUB } from './plant.js';
+import { belts, bins, beltT, beltLat, beltPt, HUB, GATE_LIFT } from './plant.js';
 import { table, stationPos, stationOf, slotAt, updateTable, BOWL_R, BOWL_FLOOR, ringXZ, RING_ITEM_Y } from './table.js';
 import { lane, laneEmit, laneCanAccept, updateLane, boxLine, stationBox, boxPlace, boxLineAdvance, updateBoxLine, Delta, DELTA, AGV, LANE_ITEM_Y, HEAD_X, LANE_Y, BOX_Z, LANE_Z, STATION_X, cellLocal } from './line.js';
 import { R } from './table.js';
 
-export const P = { ...C.defaults, paused: true, maxActive: 3, lowWater: 0.15 };   // l'impianto parte fermo: lo avvia l'utente
+export const P = { ...C.defaults, paused: true, maxActive: 2, lowWater: 0.15 };   // l'impianto parte fermo: lo avvia l'utente
 export const S = {
-  time: 0, orders: [], nextId: 1, boxesDone: 0, boxTimes: [], lost: 0, log: [], awake: 0, util: 0, idxWait: '',
+  gatesOpen: true, time: 0, orders: [], nextId: 1, boxesDone: 0, boxTimes: [], lost: 0, log: [], awake: 0, util: 0, idxWait: '',
   physSteps: 0, rtf: 1, delivered: 0, stockInit: P.binStock, rate: 0, lastBox: 0,
 };
 export const deltas = [];
@@ -61,7 +61,8 @@ const activeCount = () => S.orders.filter((o) => o.status === 'dosing' || o.stat
 function dispatch() {
   if (P.autoOrders && S.orders.filter((o) => o.status === 'queued').length < 2) addOrder(genOrder());
   const next = S.orders.find((o) => o.status === 'queued');
-  if (next && activeCount() < P.maxActive) {
+  // un ordine alla volta nella vasca: il successivo parte solo quando il precedente è arrivato tutto (niente cialde "orfane")
+  if (next && activeCount() < P.maxActive && !S.orders.some((o) => o.status === 'dosing' && o.arrived < BOX_SIZE)) {
     for (const [f, n] of Object.entries(next.counts)) binByFlavor[f].queue.push({ order: next, remaining: n, flavor: +f });
     next.status = 'dosing'; next.tDose = S.time;
   }
@@ -164,6 +165,7 @@ function updateBin(bin, dt) {
   if (P.autoAgv && low && bin.online && !bin.swapping && !bin.agvRequested) requestAgv(bin, false);
   if (bin.agvRequested && !bin.swapping) startSwap(bin);
 }
+export const agvOf = (bin) => { const a = agvs.get(bin.belt.name + (bin.extra ? 'X' : bin.sg)); return a && a.bin === bin ? a : null; };
 export const agvStatus = (bin) => { const a = agvs.get(bin.belt.name + (bin.extra ? 'X' : bin.sg)); return a && a.bin === bin ? a.state : 'idle'; };
 export function updateBinGlow(b) {
   b.colorMat.emissiveIntensity = 0.15 + b.flash * 1.0 + (b.selected ? 0.55 : 0);
@@ -264,7 +266,7 @@ export function injectError() {
 // Ogni slot ha uno scrambler (60 s) e un buffer ad anello esterno. Finito lo scrambler, le 36 capsule dritte passano nel
 // buffer; il buffer viaggia con la tavola fino all'uscita, dove in ~5 s (rotazione + scarico) le capsule vanno in fila sulla corsia.
 const upright = new THREE.Quaternion();
-const XFER_STAGGER = 0.02, XFER_FLIGHT = 0.5, XFER_T = XFER_FLIGHT + BOX_SIZE * XFER_STAGGER;
+const XFER_FLIGHT = 0.5;
 const indexTime = () => P.tableTime * 0.28;                 // rotazione 90°
 const dischargeInterval = () => P.tableTime * 0.72 / BOX_SIZE; // scarico dei 36 elementi
 function readyOrder() {
@@ -281,7 +283,7 @@ function fillSlot(nSlot, ord) {
     c.off = off; c.q0 = c.quat.clone(); c.state = 'virt'; dropBody(c);
   }
   items.sort((a, b) => a.flavor - b.flavor);
-  Object.assign(nSlot, { state: 'scramble', timer: 0, items, order: ord });
+  Object.assign(nSlot, { state: 'scramble', timer: 0, items, order: ord, total: items.length, relT: 0 });
   ord.status = 'scrambling'; ord.tIdx = S.time;
 }
 const rotateTable = () => { table.step++; table.target = table.step * Math.PI / 2; };
@@ -295,26 +297,48 @@ function tableControl() {
     if (S.time - ord.lastArrival < 0.8) { S.idxWait = 'assestamento lotto'; return; }
     fillSlot(nSlot, ord); S.idxWait = ''; return;
   }
-  // ruota se serve portare un buffer pieno all'uscita o uno scrambler libero al riempimento
+  // appena uno scrambler parte, la tavola ruota subito se ce n'è un altro libero (così i cancelletti si riaprono);
+  // ruota anche per portare all'uscita un buffer pieno
   const fullAway = table.slots.some((s) => s.rstate === 'full');
-  const wantFree = ord && table.slots.some((s) => s.state === 'empty');
-  if (fullAway || wantFree) { rotateTable(); S.idxWait = ''; return; }
-  S.idxWait = ord ? 'attesa scrambler libero' : 'attesa lotto da 36';
+  const freeElsewhere = nSlot.state !== 'empty' && table.slots.some((s) => s.state === 'empty');
+  if (fullAway || freeElsewhere) { rotateTable(); S.idxWait = ''; return; }
+  S.idxWait = nSlot.state !== 'empty' ? 'attesa scrambler libero' : 'attesa lotto da 36';
 }
-function beginXfer(s) {
-  s.ritems = s.items; s.items = [];
-  s.rorder = s.order; s.order = null;
-  s.state = 'empty'; s.rstate = 'loading'; s.xfer = 0;
-  for (const c of s.ritems) { c.xf0x = c.off.x; c.xf0z = c.off.z; c.xf0y = BOWL_FLOOR + 0.06 + CAP.h / 2; }
-  s.rorder.status = 'buffering';
+// cancelletti: aperti solo se sotto l'hopper c'è uno scrambler libero, la tavola è ferma e nessun lotto completo aspetta
+function updateGates(dt) {
+  const nSlot = slotAt(0);
+  const complete = S.orders.some((o) => (o.status === 'dosing' || o.status === 'collecting') && o.arrived >= BOX_SIZE);
+  S.gatesOpen = nSlot.state === 'empty' && !table.moving && !complete;
+  for (const b of belts) {
+    const g = b.gate;
+    g.target = S.gatesOpen ? 1 : 0;
+    g.k += clamp(g.target - g.k, -dt / 0.5, dt / 0.5);
+    const y = g.yClosed + smooth(g.k) * GATE_LIFT;
+    g.body.setNextKinematicTranslation({ x: g.base.x, y, z: g.base.z });
+    g.group.position.y = y;
+    g.lamp.material.color.setHex(g.k > 0.5 ? 0x35ff7a : 0xff5470);
+  }
+}
+// una capsula alla volta lascia lo scrambler (già dritta) e va nel buffer ad anello, distribuite sul tempo di processo
+function releaseOne(s) {
+  const c = s.items.shift();
+  if (s.rstate === 'empty') { s.rstate = 'loading'; s.rorder = s.order; s.rorder.status = 'buffering'; s.feed = 0; }
+  c.xf0x = c.off.x; c.xf0z = c.off.z; c.xf0y = BOWL_FLOOR + 0.06 + CAP.h / 2; c.fly = 0;
+  s.ritems.push(c);
+  if (!s.items.length) { s.state = 'empty'; s.order = null; }
 }
 function updateSlots(dt) {
   const iv = dischargeInterval();
   for (const s of table.slots) {
     const st = stationOf(s.id), tubV = table.tubs[s.id];
     if (s.state === 'scramble') { s.timer += dt; if (s.timer >= P.scrambleTime) s.state = 'done'; }
-    if (s.state === 'done' && s.rstate === 'empty') beginXfer(s);
-    if (s.rstate === 'loading') { s.xfer += dt / XFER_T; if (s.xfer >= 1) { s.rstate = 'full'; s.rorder.status = 'buffered'; } }
+    if (s.items.length && (s.state === 'scramble' || s.state === 'done')) {
+      const due = s.state === 'done' ? s.total : Math.floor(s.timer / P.scrambleTime * s.total);
+      s.relT += dt;
+      while (s.items.length && s.ritems.length < due && s.relT >= 0.04
+        && (s.rstate === 'empty' || (s.rstate === 'loading' && s.rorder === s.order))) { releaseOne(s); s.relT = 0; }
+    }
+    if (s.rstate === 'loading' && !s.items.length && s.ritems.every((c) => c.fly >= 1)) { s.rstate = 'full'; s.rorder.status = 'buffered'; }
     if (s.rstate === 'full' && st === 2 && !table.moving) { s.rstate = 'discharging'; s.rorder.status = 'discharging'; s.emitted = 0; s.emitT = 0; s.feed = 0; }
     if (s.rstate === 'discharging') {
       s.emitT += dt;
@@ -347,13 +371,14 @@ function updateSlots(dt) {
       s.ritems.forEach((c, k) => {
         const [rx, rz] = ringXZ(s.id, k + s.feed);
         let x = rx, z = rz, y = RING_ITEM_Y;
-        if (s.rstate === 'loading') {
-          const e = clamp((s.xfer * XFER_T - k * XFER_STAGGER) / XFER_FLIGHT, 0, 1), k2 = smooth(e);
+        let e = 1;
+        if (c.fly < 1) {
+          c.fly = Math.min(1, c.fly + dt / XFER_FLIGHT); e = c.fly; const k2 = smooth(e);
           x = c.xf0x + (rx - c.xf0x) * k2; z = c.xf0z + (rz - c.xf0z) * k2;
           y = c.xf0y + (RING_ITEM_Y - c.xf0y) * k2 + Math.sin(Math.PI * e) * 0.75;
         }
         c.pos.set(x, y, z).applyAxisAngle(Yax, -table.theta).add(tc);
-        c.quat.copy(qt);
+        if (e < 1) c.quat.copy(c.q0).slerp(upright, smooth(e)).premultiply(qt); else c.quat.copy(qt);
         writeMatrix(c);
       });
     }
@@ -452,7 +477,7 @@ export function frame(realDt) {
   acc += Math.min(realDt, 0.05) * P.speed;
   let n = 0;
   const t0 = performance.now();
-  while (acc >= H && n < 40 && performance.now() - t0 < 14) { _stepPre(H); world.step(); acc -= H; n++; }
+  while (acc >= H && n < 40 && performance.now() - t0 < 9) { _stepPre(H); world.step(); acc -= H; n++; }
   if (acc >= H) acc = 0;           // budget esaurito: la simulazione rallenta invece di bloccare il browser
   S.rtf += ((n * H) / Math.max(realDt, 1e-3) - S.rtf) * 0.1;
   const dt = n * H;
@@ -464,6 +489,7 @@ export function frame(realDt) {
     for (const b of bins) updateBin(b, dt);
     updateFlow();
     tableControl();
+    updateGates(dt);
     updateTable(dt, indexTime());
     updateSlots(dt);
     updateLine(dt);

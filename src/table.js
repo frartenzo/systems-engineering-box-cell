@@ -67,7 +67,7 @@ export function buildTable() {
     table.tubs.push({ tub, star, led, rled, a });
     table.slots.push({
       id: j, state: 'empty', timer: 0, items: [], order: null,                    // scrambler: empty | scramble | done
-      rstate: 'empty', ritems: [], rorder: null, emitted: 0, emitT: 0, feed: 0, xfer: 0,   // buffer: empty | loading | full | discharging
+      rstate: 'empty', ritems: [], rorder: null, emitted: 0, emitT: 0, feed: 0, total: 0, relT: 0,   // buffer: empty | loading | full | discharging
     });
   }
 

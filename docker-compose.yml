@@ -1,0 +1,11 @@
+services:
+  nespresso-cell:
+    build: .
+    container_name: nespresso-cell
+    restart: unless-stopped
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

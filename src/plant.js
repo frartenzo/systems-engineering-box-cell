@@ -296,4 +296,22 @@ export function buildHall() {
   inst.castShadow = true; scene.add(inst);
 }
 
-export function buildBelts() { belts.forEach(buildBelt); }
+// cancelletto in fondo a ogni nastro (t = GATE_T dall'hopper): chiuso, trattiene le cialde degli ordini successivi
+// finché sotto l'hopper non c'è uno scrambler libero
+export const GATE_T = 1.8, GATE_H = 1.1, GATE_LIFT = 1.7;
+function buildGate(b) {
+  const half = C.BELT_W / 2 + 0.12, yClosed = C.BELT_Y + 0.02 + GATE_H / 2;
+  const pos = beltPt(b, GATE_T, 0, yClosed);
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, yClosed, pos.z).setRotation(yawQ(b.yaw)));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(0.07, GATE_H / 2, half).setFriction(0.05).setRestitution(0.05).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body);
+  const g = new THREE.Group(); g.position.copy(pos); g.rotation.y = b.yaw; scene.add(g);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.14, GATE_H, half * 2), new THREE.MeshStandardMaterial({ color: 0xf2b705, roughness: 0.5, metalness: 0.2 }));
+  bar.castShadow = true; g.add(bar);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), new THREE.MeshBasicMaterial({ color: 0xff5470 })); lamp.position.set(0, GATE_H / 2 + 0.25, 0); g.add(lamp);
+  // montanti fissi ai lati
+  for (const sg of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.2, 0.2), mats.darkSteel); post.position.copy(beltPt(b, GATE_T, sg * (half + 0.2), C.BELT_Y + 1.6)); scene.add(post);
+  }
+  b.gate = { body, group: g, lamp, yClosed, base: pos.clone(), k: 0, target: 0 };   // k: 0 chiuso .. 1 aperto
+}
+export function buildBelts() { belts.forEach(buildBelt); belts.forEach(buildGate); }
