@@ -1,0 +1,22 @@
+{
+  "name": "nespresso-cell",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@dimforge/rapier3d-simd-compat": "^0.21.0",
+    "three": "^0.186.1",
+    "vite": "^8.3.4"
+  },
+  "type": "module",
+  "private": true
+}
