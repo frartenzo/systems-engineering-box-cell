@@ -8,7 +8,7 @@ Three.js per la grafica, [Rapier](https://rapier.rs) per la fisica reale delle c
 > di studio; i nomi dei gusti e delle capsule sono usati a scopo illustrativo. Nei file restano alcuni identificativi interni
 > (nome del pacchetto npm, del servizio Docker) con quel nome.
 
-**Demo online:** https://systemsengineering.centemeri.org
+**Demo online:** https://systemsengineering.centemeri.net
 
 ![Impianto completo](docs/02-impianto.png)
 
