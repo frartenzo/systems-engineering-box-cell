@@ -38,6 +38,28 @@ scene.fog = new THREE.Fog(0x151a22, 160, 420);
 export const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.3, 900);
 camera.position.set(70, 55, 40);
 export let controls;
+let sun = null;
+
+// ---- qualità grafica: 0 alta · 1 media · 2 bassa (niente ombre) · 3 minima (meno fps e risoluzione)
+export const quality = { level: 0, fps: 30 };
+const Q = [
+  { dpr: 1.5, shadows: true, fps: 30 },
+  { dpr: 1, shadows: true, fps: 30 },
+  { dpr: 1, shadows: false, fps: 30 },
+  { dpr: 0.75, shadows: false, fps: 20 },
+];
+export function setQuality(l) {
+  l = Math.max(0, Math.min(Q.length - 1, l));
+  const q = Q[l], prevShadows = Q[quality.level].shadows;
+  quality.level = l; quality.fps = q.fps;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q.dpr));
+  renderer.setSize(innerWidth, innerHeight);
+  if (sun && q.shadows !== prevShadows) {
+    sun.castShadow = q.shadows;
+    scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
+  }
+  renderer.shadowMap.needsUpdate = true;
+}
 
 export function initScene(container) {
   container.appendChild(renderer.domElement);
@@ -56,7 +78,7 @@ export function initScene(container) {
   scene.environmentIntensity = 0.55;
 
   scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x2a2f38, 0.65));
-  const sun = new THREE.DirectionalLight(0xfff4e6, 2.1);
+  sun = new THREE.DirectionalLight(0xfff4e6, 2.1);
   sun.position.set(50, 90, 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);

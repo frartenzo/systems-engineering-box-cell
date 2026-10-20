@@ -1,4 +1,4 @@
-import { THREE, initPhysics, initScene, scene, camera, controls, renderer, capMesh, allCaps, V3 } from './core.js';
+import { THREE, initPhysics, initScene, scene, camera, controls, renderer, capMesh, allCaps, V3, quality, setQuality } from './core.js';
 import * as C from './config.js';
 import { FLAVORS, NF, BOX_SIZE } from './config.js';
 import { buildHall, buildBelts, buildBins, bins, labels, HUB } from './plant.js';
@@ -15,6 +15,7 @@ const hex = (i) => FLAVORS[i][1];
 async function boot() {
   await initPhysics();
   initScene($('app'));
+  renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); const l = $('loading') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'loading' })); l.style.display = 'grid'; l.textContent = 'La grafica del dispositivo si è interrotta: ricarica la pagina (prova la qualità bassa con ?q=low).'; });
   scene.add(capMesh);
   if (new URLSearchParams(location.search).has('speed')) P.speed = +new URLSearchParams(location.search).get('speed');
   buildHall(); buildBelts(); buildBins(); buildTable(); buildLane(); buildBoxLine();
@@ -102,6 +103,11 @@ function buildUI() {
   $('auto').onclick = () => { P.autoOrders = !P.autoOrders; $('auto').classList.toggle('on', P.autoOrders); };
   $('autoAgv').classList.toggle('on', P.autoAgv);
   $('autoAgv').onclick = () => { P.autoAgv = !P.autoAgv; $('autoAgv').classList.toggle('on', P.autoAgv); };
+  const qp = new URLSearchParams(location.search).get('q');
+  const coarse = matchMedia('(pointer: coarse)').matches;   // telefoni e tablet partono da qualità media
+  setQ(qp === 'low' ? '2' : qp != null && /^[0-3]$/.test(qp) ? qp : 'auto');
+  if (qMode === 'auto' && coarse) setQuality(1);
+  [...$('qSeg').children].forEach((b) => { b.onclick = () => setQ(b.dataset.q); });
   $('rot').onclick = () => { controls.autoRotate = !controls.autoRotate; $('rot').classList.toggle('on', controls.autoRotate); };
   const bind = (id, key, fmt = (v) => v, cb) => {
     const el = $('p' + id), out = $('o' + id);
@@ -222,8 +228,27 @@ const fmtT = (t) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); retu
 
 // ---------------------------------------------------------------- loop
 // Carico GPU/CPU contenuto: render a 30 fps (?fps=60 per fluido), ombre ricalcolate ogni 8 frame disegnati
-const FPS = +(new URLSearchParams(location.search).get('fps') || 30);
 let last = performance.now(), hudT = 0, lastDraw = 0, drawN = 0;
+// Qualità automatica: se per qualche secondo i fps reali restano molto sotto il target, la pagina scende di livello da sola
+let qMode = 'auto', qWinT = performance.now(), qWinN = 0, qBad = 0, qHidden = false;
+document.addEventListener('visibilitychange', () => { qHidden = true; });
+function setQ(mode) {
+  qMode = mode; qBad = 0;
+  if (mode !== 'auto') setQuality(+mode);
+  [...$('qSeg').children].forEach((b) => b.classList.toggle('on', b.dataset.q === mode));
+  $('qNow').textContent = ['alta', 'media', 'bassa', 'minima'][quality.level];
+}
+function qualityTick(now) {
+  qWinN++;
+  if (now - qWinT < 3000) return;
+  const fps = qWinN / ((now - qWinT) / 1000);
+  if (qHidden) { qHidden = false; }
+  else if (qMode === 'auto' && quality.level < 3) {
+    qBad = fps < quality.fps * 0.7 ? qBad + 1 : 0;
+    if (qBad >= 2) { setQuality(quality.level + 1); qBad = 0; $('qNow').textContent = ['alta', 'media', 'bassa', 'minima'][quality.level]; toast(`Qualità grafica ridotta automaticamente (${['alta', 'media', 'bassa', 'minima'][quality.level]}) per alleggerire il dispositivo`, true); }
+  }
+  qWinT = now; qWinN = 0;
+}
 const fwd = new THREE.Vector3(), rgt = new THREE.Vector3();
 function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -248,8 +273,8 @@ function loop(now) {
     else { const d = a.group.position.clone().sub(controls.target).multiplyScalar(Math.min(1, dt * 3)); controls.target.add(d); camera.position.add(d); tween = null; }
   }
   controls.update();
-  if (!NORENDER && now - lastDraw >= 1000 / FPS - 2) {
-    lastDraw = now;
+  if (!NORENDER && now - lastDraw >= 1000 / quality.fps - 2) {
+    lastDraw = now; qualityTick(now);
     renderer.shadowMap.needsUpdate = drawN++ % 8 === 0;
     renderer.render(scene, camera);
   }

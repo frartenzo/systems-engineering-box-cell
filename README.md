@@ -42,7 +42,7 @@ Three.js per la grafica, [Rapier](https://rapier.rs) per la fisica reale delle c
 ![Robot delta e scatole](docs/05-delta-scatola.png)
 
 Scorciatoie: `1-6` viste · `WASD`/`Q E` muovi · `L` etichette · `H` nascondi HUD.
-Parametri URL: `?speed=4` `?hud=0` `?fps=60` `?cam=x,y,z,tx,ty,tz` `?norender` (solo logica, per i test).
+Parametri URL: `?speed=4` `?hud=0` `?q=low` `?cam=x,y,z,tx,ty,tz` `?norender` (solo logica, per i test).
 
 ## Sviluppo
 
@@ -52,8 +52,11 @@ npm run dev      # http://localhost:5173
 npm run build
 ```
 
-Il render è limitato a 30 fps (`?fps=60` per più fluidità) e le ombre sono ricalcolate di rado, per tenere basso il carico
-su GPU e CPU. La fisica gira nel browser: il server serve solo file statici.
+La grafica è pensata per non pesare sul dispositivo: render a 30 fps, ombre ricalcolate di rado,
+GPU di default. La **qualità** (alta · media · bassa · minima) è in *Auto* di default: se i fps reali restano sotto il 70% del
+target per qualche secondo, la pagina scende di livello da sola (risoluzione, ombre, fps). Si può forzare dal pannello o con
+`?q=0..3` / `?q=low`; telefoni e tablet partono da *media*. Se il contesto WebGL si perde la pagina lo segnala.
+La fisica gira nel browser: il server serve solo file statici.
 
 ### Docker
 

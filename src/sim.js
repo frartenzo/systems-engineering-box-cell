@@ -297,6 +297,9 @@ function tableControl() {
     if (S.time - ord.lastArrival < 0.8) { S.idxWait = 'assestamento lotto'; return; }
     fillSlot(nSlot, ord); S.idxWait = ''; return;
   }
+  // con uno scrambler libero sotto l'hopper e un lotto in arrivo (cialde in volo o già in vasca) la tavola non si muove:
+  // altrimenti le cialde resterebbero sospese sopra uno scrambler diverso
+  if (nSlot.state === 'empty' && S.orders.some((o) => o.bowl.length || (o.status === 'dosing' && o.released > 0))) { S.idxWait = 'attesa lotto da 36'; return; }
   // appena uno scrambler parte, la tavola ruota subito se ce n'è un altro libero (così i cancelletti si riaprono);
   // ruota anche per portare all'uscita un buffer pieno
   const fullAway = table.slots.some((s) => s.rstate === 'full');
