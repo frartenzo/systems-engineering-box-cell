@@ -4,6 +4,10 @@ Simulazione interattiva nel browser di una cella automatica che prepara **Discov
 a partire da 43 gusti, sviluppata come caso di studio per il corso di *Systems Engineering*.
 Three.js per la grafica, [Rapier](https://rapier.rs) per la fisica reale delle capsule. Unità: 1 unità = 1 dm.
 
+> **Nota:** progetto didattico, **non affiliato a Nespresso**. "Nespresso" è solo il nome che il professore ha dato al caso
+> di studio; i nomi dei gusti e delle capsule sono usati a scopo illustrativo. Nei file restano alcuni identificativi interni
+> (nome del pacchetto npm, del servizio Docker) con quel nome.
+
 **Demo online:** https://systemsengineering.centemeri.org
 
 ![Impianto completo](docs/02-impianto.png)
