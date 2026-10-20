@@ -1,11 +1,25 @@
 import { THREE, RAPIER, world, scene, V3, yawQ, mats, addBox, labelSprite } from './core.js';
 import * as C from './config.js';
+import { CAP } from './config.js';
 import { HUB, labels } from './plant.js';
 
 export const R = C.R_TABLE;
 export const BOWL_R = 1.65;           // raggio interno vasca di riempimento
 export const BOWL_FLOOR = 0.5;
 export const RIM_Y = 1.05;
+
+// buffer ad anello attorno a ogni scrambler: tiene le 36 capsule già dritte e in fila, pronte per l'uscita
+export const RING_R0 = 2.42, RING_R1 = 3.0, RING_RC = 2.72;
+export const RING_H = 0.34;
+export const RING_ITEM_Y = 0.4 + 0.03 + CAP.h / 2 + 0.01;
+export const RING_STEP = 0.46 / RING_RC;   // passo angolare tra capsule
+// direzione del cancelletto d'uscita di uno slot (nel sistema della tavola): verso l'esterno rispetto al centro tavola
+export const gateAngle = (id) => { const a = id * Math.PI / 2; return Math.atan2(-Math.cos(a), Math.sin(a)); };
+// posizione (x,z) relativa al centro dello scrambler della k-esima capsula in fila (k=0: davanti al cancelletto)
+export function ringXZ(id, k) {
+  const ph = gateAngle(id) + k * RING_STEP;
+  return [RING_RC * Math.cos(ph), RING_RC * Math.sin(ph)];
+}
 
 export const table = {
   group: new THREE.Group(), theta: 0, target: 0, step: 0, moving: false, slots: [], tubs: [],
@@ -40,8 +54,21 @@ export function buildTable() {
       const tip = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), mats.yellow); tip.position.set(Math.cos(k * Math.PI / 3) * 1.1, 0.1, -Math.sin(k * Math.PI / 3) * 1.1); star.add(tip);
     }
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), new THREE.MeshBasicMaterial({ color: 0x444444 })); led.position.set(0, 1.25, 2.3); tub.add(led);
-    table.tubs.push({ tub, star, led, a });
-    table.slots.push({ id: j, state: 'empty', timer: 0, items: [], order: null, emitted: 0, emitT: 0 });
+
+    // buffer ad anello con cancelletto d'uscita
+    const gate = 0.28, thetaG = Math.PI - a;   // CylinderGeometry misura l'angolo da +z verso +x
+    const rfloor = new THREE.Mesh(new THREE.RingGeometry(RING_R0, RING_R1, 72), new THREE.MeshStandardMaterial({ color: 0x3a414b, metalness: 0.7, roughness: 0.5, side: THREE.DoubleSide }));
+    rfloor.rotation.x = -Math.PI / 2; rfloor.position.y = 0.425; rfloor.receiveShadow = true; tub.add(rfloor);
+    const rwall = new THREE.Mesh(new THREE.CylinderGeometry(RING_R1, RING_R1, RING_H, 72, 1, true, thetaG + gate / 2, Math.PI * 2 - gate), new THREE.MeshStandardMaterial({ color: 0x9aa1ab, metalness: 0.85, roughness: 0.4, side: THREE.DoubleSide }));
+    rwall.position.y = 0.4 + RING_H / 2; rwall.castShadow = true; tub.add(rwall);
+    const gdir = V3(Math.sin(a), 0, -Math.cos(a));
+    const rled = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), new THREE.MeshBasicMaterial({ color: 0x444444 }));
+    rled.position.copy(gdir).multiplyScalar(RING_R1 + 0.15).setY(0.7); tub.add(rled);
+    table.tubs.push({ tub, star, led, rled, a });
+    table.slots.push({
+      id: j, state: 'empty', timer: 0, items: [], order: null,                    // scrambler: empty | scramble | done
+      rstate: 'empty', ritems: [], rorder: null, emitted: 0, emitT: 0, feed: 0, xfer: 0,   // buffer: empty | loading | full | discharging
+    });
   }
 
   // ----- vasca fisica di riempimento (fissa nel mondo, sotto l'hopper)

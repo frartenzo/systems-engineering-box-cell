@@ -15,56 +15,106 @@
   #left{left:12px;top:12px;width:272px}
   #right{right:12px;top:12px;width:300px}
   #bottom{left:50%;bottom:12px;transform:translateX(-50%);display:flex;gap:6px;padding:8px;flex-wrap:wrap;justify-content:center;max-width:94vw}
+  #top{left:50%;top:12px;transform:translateX(-50%);display:flex;gap:12px;align-items:center;padding:8px 10px}
   button,select,input{font:inherit;color:var(--fg)}
   button{background:#1d2532;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
-  button:hover{border-color:var(--acc)} button.on{background:var(--acc);color:#111;border-color:var(--acc);font-weight:600}
+  button:hover:not(:disabled){border-color:var(--acc)} button:disabled{opacity:.45;cursor:default}
+  button.on{background:var(--acc);color:#111;border-color:var(--acc);font-weight:600}
+  button.primary{background:#2a6df4;border-color:#2a6df4;font-weight:600}button.primary:hover:not(:disabled){border-color:#9db9ff}
+  button.go{background:#1f9d55;border-color:#1f9d55;font-weight:700;font-size:14px;padding:8px 14px}
+  button.stop{background:#d1344f;border-color:#d1344f;font-weight:700;font-size:14px;padding:8px 14px}
   .row{display:flex;align-items:center;gap:8px;margin:5px 0} .row label{flex:0 0 108px;color:var(--mut)} .row input[type=range]{flex:1;accent-color:var(--acc)} .row output{width:38px;text-align:right;font-variant-numeric:tabular-nums}
   .seg{display:flex;gap:4px;flex-wrap:wrap}.seg button{padding:4px 8px}
   .kpi{display:grid;grid-template-columns:1fr 1fr;gap:6px}.kpi div{background:#131923;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
   .kpi b{display:block;font-size:17px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mut);font-size:10.5px}
-  .slots{display:flex;gap:6px}.slot{flex:1;border:1px solid var(--line);border-radius:8px;padding:5px;text-align:center;font-size:10.5px;background:#131923}
+  .slots{display:grid;grid-template-columns:1fr 1fr;gap:6px}.slot{border:1px solid var(--line);border-radius:8px;padding:5px;text-align:center;font-size:10.5px;background:#131923}
   .slot i{display:block;height:4px;border-radius:2px;background:#333;margin-top:4px;overflow:hidden}.slot i u{display:block;height:100%;background:var(--acc)}
+  .slot small{display:block;color:var(--mut)}
   .slot.scramble{border-color:#ffc400}.slot.ready{border-color:var(--ok)}.slot.discharging{border-color:var(--cy)}
   .ord{border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin:5px 0;background:#131923;font-size:11.5px}
   .ord .bar{height:4px;background:#2a3140;border-radius:2px;margin-top:4px;overflow:hidden}.ord .bar u{display:block;height:100%;background:var(--cy)}
+  .mini{display:grid;grid-template-columns:repeat(6,7px);gap:1px;float:right;margin-left:6px}.mini i{width:7px;height:7px;border-radius:50%}
   .chip{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px;border:1px solid #0008}
   .tag{float:right;color:var(--mut)}
   #log{font-size:11.5px;max-height:170px;overflow:auto}#log div{padding:2px 0;border-bottom:1px solid #1d2532}
   #log .err{color:var(--err)}#log .ok{color:var(--ok)}#log .agv{color:#ffc86b}#log .ord{color:var(--cy)}
   .warn{color:var(--err);font-weight:600}
-  #binCard{position:fixed;left:12px;bottom:12px;width:250px;display:none}
-  #loading{position:fixed;inset:0;display:grid;place-items:center;background:#151a22;z-index:9;font-size:15px;color:var(--mut)}
-  .compose select,.compose input{background:#131923;border:1px solid var(--line);border-radius:6px;padding:4px}
-  .compose select{flex:1;min-width:0}.compose input{width:48px}
+  #binCard{left:12px;bottom:12px;width:280px;display:none}
+  .stockbar{height:8px;background:#2a3140;border-radius:4px;margin:6px 0;overflow:hidden}.stockbar u{display:block;height:100%;background:var(--ok)}
+  #loading{position:fixed;inset:0;display:grid;place-items:center;background:#151a22;z-index:99;font-size:15px;color:var(--mut)}
   details summary{cursor:pointer;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.9px;margin-top:10px}
   kbd{background:#1d2532;border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px}
+  #plantState{font-weight:700;letter-spacing:.4px;min-width:96px;text-align:center}
+  #plantState.run{color:var(--ok)}#plantState.off{color:var(--err)}
+  #toast{position:fixed;left:50%;top:66px;transform:translateX(-50%);background:#1f9d55;color:#fff;padding:8px 14px;border-radius:8px;font-weight:600;display:none;z-index:30}
+  #toast.warn{background:#c9722b}
+
+  /* ---- menu a griglia stile inventario ---- */
+  #builder{position:fixed;inset:0;display:none;place-items:center;background:rgba(6,9,14,.6);z-index:20}
+  #builder.open{display:grid}
+  .inv{background:#2b2f37;border:3px solid #0b0d11;box-shadow:0 0 0 3px #555d6b,0 24px 70px #000b;border-radius:4px;padding:14px 16px;max-height:96vh;overflow:auto;max-width:98vw}
+  .invhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .invhead h3{margin:0;font-size:16px;letter-spacing:.3px}
+  .cols{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
+  .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:#aeb7c4;margin:0 0 6px;display:flex;justify-content:space-between}
+  .lbl .ok{color:var(--ok)}
+  .grid{display:grid;gap:4px;user-select:none;-webkit-user-select:none}
+  #palette{grid-template-columns:repeat(7,48px)}
+  #boxGrid{grid-template-columns:repeat(6,48px)}
+  .mc{width:48px;height:48px;background:#171a20;border:2px solid;border-color:#07080b #4c5361 #4c5361 #07080b;position:relative;cursor:pointer;touch-action:none;display:grid;place-items:center}
+  .mc:hover{background:#2a2f39;outline:2px solid #ffffff55;outline-offset:-2px}
+  .mc.hot{outline:3px solid var(--acc);outline-offset:-3px;background:#3a3020}
+  .mc.lifted .cap{opacity:.3}
+  .cap{width:30px;height:30px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(circle at 36% 30%,rgba(255,255,255,.8) 0 7%,rgba(255,255,255,0) 30%),radial-gradient(circle,transparent 0 50%,rgba(0,0,0,.3) 55% 62%,transparent 66%),var(--c);
+    box-shadow:0 2px 0 rgba(0,0,0,.5),inset 0 -3px 5px rgba(0,0,0,.35)}
+  .cap.ghost{position:fixed;transform:translate(-50%,-50%);z-index:50;width:34px;height:34px;opacity:.92}
+  .cnt{position:absolute;right:3px;bottom:0;font:700 13px/1.1 ui-monospace,Menlo,monospace;color:#fff;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000;pointer-events:none}
+  #boxPane{padding:8px;background:#22262d;border:2px solid #0b0d11;border-radius:3px}
+  #bSummary{margin:10px 0;display:flex;flex-wrap:wrap;gap:4px;max-width:340px;min-height:22px}
+  .sumchip{background:#171a20;border:1px solid var(--line);border-radius:12px;padding:2px 8px 2px 4px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px}
+  .sumchip i{width:10px;height:10px;border-radius:50%;border:1px solid #0008;display:inline-block}
+  .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  .ctl .cpy{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .ctl .cpy button{padding:2px 9px}
+  #bSend{width:100%;padding:10px;font-size:14px}
+  .hint{margin-top:8px;font-size:11px;color:#98a2b3;max-width:340px}
+  #tip{position:fixed;z-index:60;pointer-events:none;display:none;background:rgba(18,2,24,.95);border:2px solid #2a0a5e;box-shadow:inset 0 0 0 1px #5b2fa8;padding:5px 9px;border-radius:3px;font-size:13px;line-height:1.35;color:#fff;max-width:260px}
+  #tip .sub{color:#b9a6e8}
 </style>
 </head>
 <body>
 <div id="loading">Costruisco l'impianto e assesto 1.500 capsule…</div>
 <div id="app"></div>
 
+<div id="top" class="panel">
+  <button id="run" class="go">▶ Avvia impianto</button>
+  <span id="plantState" class="off">FERMO</span>
+  <button id="newOrder" class="primary">🎁 Nuova Discovery Box <kbd>O</kbd></button>
+  <span class="sub" id="qInfo"></span>
+</div>
+<div id="toast"></div>
+
 <div id="left" class="panel">
   <h1>Cella box custom · 36 capsule</h1>
-  <div class="sub">43 gusti · 3 nastri · tavola 4 scrambler · delta</div>
+  <div class="sub">43 gusti · 3 nastri · tavola 4 scrambler + buffer · delta</div>
   <h2>Simulazione</h2>
   <div class="seg" id="speedSeg"></div>
-  <div class="row" style="margin-top:8px"><button id="pause">⏸ Pausa</button><button id="auto" class="on">Ordini auto</button><button id="rot">⟳ Orbita</button></div>
+  <div class="row" style="margin-top:8px"><button id="rot">⟳ Orbita</button></div>
+  <h2>Automatismi</h2>
+  <div class="row"><button id="auto">Ordini casuali</button><button id="autoAgv">AGV automatico</button></div>
   <h2>Parametri</h2>
   <div class="row"><label>Vel. nastro</label><input type="range" id="pBelt" min="4" max="16" step="0.5"><output id="oBelt"></output></div>
   <div class="row"><label>Portata vite</label><input type="range" id="pScrew" min="1" max="8" step="0.5"><output id="oScrew"></output></div>
   <div class="row"><label>Scrambler (s)</label><input type="range" id="pScr" min="10" max="90" step="5"><output id="oScr"></output></div>
-  <div class="row"><label>Pick delta (s)</label><input type="range" id="pPick" min="0.2" max="1" step="0.02"><output id="oPick"></output></div>
+  <div class="row"><label>Tavola (s)</label><input type="range" id="pTab" min="2" max="12" step="0.5"><output id="oTab"></output></div>
+  <div class="row"><label>Delta (s/box)</label><input type="range" id="pBox" min="4" max="20" step="0.5"><output id="oBox"></output></div>
   <div class="row"><label>N° delta</label><div class="seg" id="dSeg"><button data-n="1">1</button><button data-n="2">2</button></div></div>
   <div class="row"><label>Scorta cassoni</label><input type="range" id="pStock" min="10" max="600" step="10"><output id="oStock"></output></div>
-  <details><summary>Ordine manuale</summary>
-    <div class="compose" id="compose"></div>
-    <div class="row"><button id="send">Invia ordine</button><button id="rand">Casuale</button><span id="sum" class="sub"></span></div>
-  </details>
   <details><summary>Test</summary>
     <div class="row"><button id="inject">Scarta una capsula</button><button id="emptyBin">Svuota cassone sel.</button></div>
   </details>
-  <div class="sub" style="margin-top:10px"><kbd>1-6</kbd> viste · <kbd>WASD</kbd> muovi · <kbd>Q/E</kbd> su/giù · <kbd>L</kbd> etichette · <kbd>H</kbd> nascondi HUD · click su cassone = info</div>
+  <div class="sub" style="margin-top:10px"><kbd>Spazio</kbd> avvia/ferma · <kbd>O</kbd> nuovo ordine · <kbd>1-6</kbd> viste · <kbd>WASD</kbd> muovi · <kbd>Q/E</kbd> su/giù · <kbd>L</kbd> etichette · <kbd>H</kbd> nascondi HUD · click su un cassone = scheda e AGV</div>
 </div>
 
 <div id="right" class="panel">
@@ -78,7 +128,37 @@
 </div>
 
 <div id="bottom" class="panel"></div>
-<div id="binCard" class="panel"></div>
+
+<div id="binCard" class="panel">
+  <h1><span class="chip" id="bcChip"></span><span id="bcName"></span> <span class="sub" id="bcId"></span></h1>
+  <div class="stockbar"><u id="bcBar"></u></div>
+  <div class="sub" id="bcL1"></div><div class="sub" id="bcL2"></div>
+  <div class="row" style="margin-top:8px"><button id="bcAgv" class="primary">🚚 Chiama AGV · cassone nuovo</button><button id="bcCam" title="Inquadra il cassone">📷</button></div>
+</div>
+
+<div id="builder">
+  <div class="inv">
+    <div class="invhead"><h3>🎁 Crea la tua Discovery Box · 36 capsule</h3><button id="bClose">✕</button></div>
+    <div class="cols">
+      <div>
+        <div class="lbl"><span>Gusti</span><span>43</span></div>
+        <div id="palette" class="grid"></div>
+        <div class="hint"><b>Clic / tap</b> = +1 · <b>Maiusc</b>+clic = +6 · <b>Alt</b>+clic = riempi · <b>trascina</b> su una cella · <b>tasto destro</b> o tap su una cella = togli</div>
+      </div>
+      <div>
+        <div class="lbl"><span>La tua box</span><span id="bCount"></span></div>
+        <div id="boxPane"><div id="boxGrid" class="grid"></div></div>
+        <div id="bSummary"></div>
+        <div class="ctl">
+          <button id="bClear">Svuota</button><button id="bRand">Casuale</button>
+          <span class="cpy"><span class="sub">Copie</span><button id="bMinus">−</button><output id="bCopies">1</output><button id="bPlus">+</button></span>
+        </div>
+        <button id="bSend" class="primary">Invia in produzione</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="tip"></div>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

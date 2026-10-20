@@ -2,7 +2,7 @@ import { THREE, scene, V3, mats, addBox, makeLink, setLink, labelSprite, writeMa
 import * as C from './config.js';
 import { CAP } from './config.js';
 import { labels, plantGroup } from './plant.js';
-import { R } from './table.js';
+import { R, RING_RC, RING_ITEM_Y } from './table.js';
 
 // ============================================================ corsia di allineamento
 export const LANE_Y = 1.1;
@@ -10,30 +10,32 @@ export const LANE_ITEM_Y = LANE_Y + CAP.h / 2 + 0.04;
 export const HEAD_X = 25;
 export const LANE_SPACING = 0.5;
 export const LANE_Z = R + 14;
-const PATH = [[0, R], [0, R + 4.5], [2.5, R + 8], [4, LANE_Z], [8, LANE_Z], [HEAD_X, LANE_Z]];
+// corsia: parte dal cancelletto del buffer ad anello sul lato uscita della tavola, sale con una rampa e porta alla testa del delta
+const PATH = [[0, R + RING_RC, RING_ITEM_Y], [0, R + 4.6, LANE_ITEM_Y], [2.5, R + 8, LANE_ITEM_Y], [4, LANE_Z, LANE_ITEM_Y], [8, LANE_Z, LANE_ITEM_Y], [HEAD_X, LANE_Z, LANE_ITEM_Y]];
 const segLen = [], cum = [0];
 for (let i = 1; i < PATH.length; i++) {
-  segLen.push(Math.hypot(PATH[i][0] - PATH[i - 1][0], PATH[i][1] - PATH[i - 1][1]));
+  segLen.push(Math.hypot(PATH[i][0] - PATH[i - 1][0], PATH[i][1] - PATH[i - 1][1], PATH[i][2] - PATH[i - 1][2]));
   cum.push(cum[i - 1] + segLen[i - 1]);
 }
 export const LANE_LEN = cum[cum.length - 1];
 export function laneAt(s, out = V3()) {
   s = clamp(s, 0, LANE_LEN);
   let i = 1; while (i < cum.length - 1 && s > cum[i]) i++;
-  const t = (s - cum[i - 1]) / segLen[i - 1];
-  return out.set(PATH[i - 1][0] + (PATH[i][0] - PATH[i - 1][0]) * t, LANE_ITEM_Y, PATH[i - 1][1] + (PATH[i][1] - PATH[i - 1][1]) * t);
+  const t = (s - cum[i - 1]) / segLen[i - 1], A = PATH[i - 1], B = PATH[i];
+  return out.set(A[0] + (B[0] - A[0]) * t, A[2] + (B[2] - A[2]) * t, A[1] + (B[1] - A[1]) * t);
 }
 
 export const lane = { items: [], speed: 9 };
 export function buildLane() {
   for (let i = 1; i < PATH.length; i++) {
-    const [ax, az] = PATH[i - 1], [bx, bz] = PATH[i];
-    const L = segLen[i - 1], ang = Math.atan2(-(bz - az), bx - ax);
-    const mid = V3((ax + bx) / 2, 0, (az + bz) / 2);
-    addBox(plantGroup, { pos: V3(mid.x, LANE_Y - 0.1, mid.z), size: [L / 2 + 0.2, 0.1, 0.38], rotY: ang, mat: mats.darkSteel, phys: false });
+    const [ax, az, ay] = PATH[i - 1], [bx, bz, by] = PATH[i];
+    const dir = V3(bx - ax, by - ay, bz - az), L = dir.length(); dir.multiplyScalar(1 / L);
+    const zAx = V3().crossVectors(dir, V3(0, 1, 0)).normalize(), yAx = V3().crossVectors(zAx, dir);
+    const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(dir, yAx, zAx));
+    const mid = V3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+    addBox(plantGroup, { pos: mid.clone().add(V3(0, -0.28, 0)), size: [L / 2 + 0.2, 0.1, 0.38], q, mat: mats.darkSteel, phys: false });
     for (const sg of [-1, 1]) {
-      const off = V3(-(bz - az) / L * 0.36 * sg, 0, (bx - ax) / L * 0.36 * sg);
-      addBox(plantGroup, { pos: V3(mid.x + off.x, LANE_Y + 0.3, mid.z + off.z), size: [L / 2 + 0.2, 0.3, 0.03], rotY: ang, mat: mats.brushed, phys: false });
+      addBox(plantGroup, { pos: mid.clone().add(V3(0, 0.12, 0)).addScaledVector(zAx, 0.36 * sg), size: [L / 2 + 0.2, 0.3, 0.03], q, mat: mats.brushed, phys: false });
     }
   }
   const lab = labelSprite('Guide · buffer da 36 capsule dritte', '#7cf', 1.2); lab.position.set(14, 4.2, LANE_Z); labels.add(lab);
@@ -161,30 +163,53 @@ export class Delta {
 }
 
 // ============================================================ AGV
+const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 export class AGV {
   constructor(name) {
     this.name = name;
     const g = this.group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(5, 0.6, 3), mats.agv); body.position.y = 0.4; g.add(body);
-    const lift = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.12, 2.6), mats.darkSteel); lift.position.y = 0.75; g.add(lift);
     for (const sx of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 3.1, 12), mats.rubber); w.rotation.x = Math.PI / 2; w.position.set(sx * 1.8, 0.25, 0); g.add(w); }
     const led = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 2.2), mats.led); led.position.set(2.5, 0.5, 0); g.add(led);
-    this.load = new THREE.Group(); this.load.position.y = 0.8; g.add(this.load);
+    // piattaforma di sollevamento con il cassone sopra
+    this.lift = new THREE.Group(); this.lift.position.y = 0.75; g.add(this.lift);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.12, 2.6), mats.darkSteel); this.lift.add(plate);
+    this.load = new THREE.Group(); this.lift.add(this.load);
     const pal = new THREE.Mesh(new THREE.BoxGeometry(4, 1.0, 4), mats.wood); pal.position.y = 0.5; this.load.add(pal);
     this.binProxy = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.4, 3.8), mats.plastic); this.binProxy.position.y = 1.7; this.load.add(this.binProxy);
-    this.tagMat = new THREE.MeshStandardMaterial({ color: 0xffffff }); const tag = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.4, 3.9), this.tagMat); tag.position.y = 2.4; this.load.add(tag);
+    this.tagMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const tag = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.4, 3.9), this.tagMat); tag.position.y = 2.4; this.load.add(tag);
     this.load.visible = false;
     g.traverse((m) => { if (m.isMesh) { m.castShadow = true; } });
     scene.add(g);
-    this.path = []; this.idx = 0; this.speed = 9; this.cb = null; this.state = 'idle'; this.bin = null;
+    this.path = []; this.idx = 0; this.speed = 12; this.cb = null; this.state = 'idle'; this.bin = null;
+    this.anim = null; this.heading = 0;
+  }
+  // 'new' = cassone pieno del gusto indicato, 'old' = cassone vuoto ritirato
+  setPayload(kind, color) {
+    this.load.visible = !!kind;
+    if (kind === 'new') this.tagMat.color.copy(color);
+    if (kind === 'old') this.tagMat.color.setHex(0x555a63);
   }
   place(p) { this.group.position.set(p.x, C.DECK_Y, p.z); }
-  follow(path, cb) { this.path = path; this.idx = 0; this.cb = cb; this.group.visible = true; this.place(path[0]); }
+  follow(path, cb) {
+    this.path = path; this.idx = 0; this.cb = cb; this.group.visible = true; this.place(path[0]);
+    if (path.length > 1) { this.heading = Math.atan2(-(path[1].z - path[0].z), path[1].x - path[0].x); this.group.rotation.y = this.heading; }
+  }
+  // animazione a tempo (scambio cassone): tick(p) con p in [0,1], poi done()
+  animate(dur, tick, done) { this.anim = { t: 0, dur, tick, done }; }
   update(dt) {
+    if (this.anim) {
+      const a = this.anim; a.t += dt;
+      const p = Math.min(1, a.t / a.dur);
+      a.tick(p);
+      if (p >= 1) { this.anim = null; a.done && a.done(); }
+    }
+    this.group.rotation.y += angDiff(this.group.rotation.y, this.heading) * Math.min(1, dt * 7);
     if (!this.path.length || this.idx >= this.path.length - 1) return;
     const a = this.group.position, b = this.path[this.idx + 1];
     const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), step = this.speed * dt;
-    if (d > 1e-3) this.group.rotation.y = Math.atan2(-dz, dx);
+    if (d > 1e-3) this.heading = Math.atan2(-dz, dx);
     if (step >= d) { a.x = b.x; a.z = b.z; this.idx++; if (this.idx >= this.path.length - 1) { const cb = this.cb; this.cb = null; cb && cb(); } }
     else { a.x += dx / d * step; a.z += dz / d * step; }
   }
